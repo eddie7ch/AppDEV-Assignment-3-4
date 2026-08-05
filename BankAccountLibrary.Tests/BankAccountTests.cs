@@ -167,5 +167,67 @@ namespace BankAccountLibrary.Tests
             string result = BankAccount.NormalizeAccountHolderName("   sArAh CONNOR   ");
             Assert.That(result, Is.EqualTo("Sarah Connor"));
         }
+
+        // ----- DCR-1: minimum balance / overdraft protection -----
+
+        [Test]
+        public void Withdraw_BelowMinimumBalance_ReturnsFalseAndBalanceUnchanged()
+        {
+            var account = new BankAccount("ACC-4000", "Sam Rivera", 100m, minimumBalance: 20m);
+
+            bool result = account.Withdraw(90m);
+
+            Assert.That(result, Is.False);
+            Assert.That(account.Balance, Is.EqualTo(100m));
+        }
+
+        [Test]
+        public void Withdraw_DownToExactMinimumBalance_Succeeds()
+        {
+            var account = new BankAccount("ACC-4001", "Sam Rivera", 100m, minimumBalance: 20m);
+
+            bool result = account.Withdraw(80m);
+
+            Assert.That(result, Is.True);
+            Assert.That(account.Balance, Is.EqualTo(20m));
+        }
+
+        [Test]
+        public void Constructor_InitialBalanceBelowMinimumBalance_ThrowsArgumentException()
+        {
+            Assert.Throws<ArgumentException>(() => new BankAccount("ACC-4002", "Sam Rivera", 10m, minimumBalance: 20m));
+        }
+
+        [Test]
+        public void Constructor_NegativeMinimumBalance_ThrowsArgumentOutOfRangeException()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => new BankAccount("ACC-4003", "Sam Rivera", 50m, minimumBalance: -1m));
+        }
+
+        [Test]
+        public void Constructor_DefaultMinimumBalance_IsZero()
+        {
+            Assert.That(_account.MinimumBalance, Is.EqualTo(0m));
+        }
+
+        // ----- DCR-1: extracted pure validation helper -----
+
+        [Test]
+        public void ValidateTransactionAmount_PositiveAmount_ReturnsNull()
+        {
+            Assert.That(BankAccount.ValidateTransactionAmount(10m), Is.Null);
+        }
+
+        [Test]
+        public void ValidateTransactionAmount_ZeroAmount_ReturnsErrorMessage()
+        {
+            Assert.That(BankAccount.ValidateTransactionAmount(0m), Is.Not.Null);
+        }
+
+        [Test]
+        public void ValidateTransactionAmount_NegativeAmount_ReturnsErrorMessage()
+        {
+            Assert.That(BankAccount.ValidateTransactionAmount(-5m), Is.Not.Null);
+        }
     }
 }

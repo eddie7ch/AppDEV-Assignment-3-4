@@ -15,7 +15,13 @@ namespace BankAccountLibrary
         public string AccountHolderName { get; }
         public decimal Balance { get; private set; }
 
-        public BankAccount(string accountNumber, string accountHolderName, decimal initialBalance)
+        /// <summary>
+        /// The lowest balance this account is allowed to drop to via <see cref="Withdraw"/>.
+        /// Added by DCR-1 to support minimum-balance / overdraft-protected accounts.
+        /// </summary>
+        public decimal MinimumBalance { get; }
+
+        public BankAccount(string accountNumber, string accountHolderName, decimal initialBalance, decimal minimumBalance = 0m)
         {
             if (string.IsNullOrWhiteSpace(accountNumber))
             {
@@ -27,9 +33,20 @@ namespace BankAccountLibrary
                 throw new ArgumentOutOfRangeException(nameof(initialBalance), "Initial balance cannot be negative.");
             }
 
+            if (minimumBalance < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(minimumBalance), "Minimum balance cannot be negative.");
+            }
+
+            if (initialBalance < minimumBalance)
+            {
+                throw new ArgumentException("Initial balance cannot be less than the minimum balance.", nameof(initialBalance));
+            }
+
             AccountNumber = accountNumber;
             AccountHolderName = NormalizeAccountHolderName(accountHolderName);
             Balance = initialBalance;
+            MinimumBalance = minimumBalance;
             _transactionHistory.Add($"Account opened with balance {initialBalance:C}");
         }
 
@@ -49,9 +66,10 @@ namespace BankAccountLibrary
 
         public void Deposit(decimal amount)
         {
-            if (amount <= 0)
+            string? error = ValidateTransactionAmount(amount);
+            if (error is not null)
             {
-                throw new ArgumentOutOfRangeException(nameof(amount), "Deposit amount must be greater than zero.");
+                throw new ArgumentOutOfRangeException(nameof(amount), error);
             }
 
             Balance += amount;
@@ -59,16 +77,17 @@ namespace BankAccountLibrary
         }
 
         /// <summary>
-        /// Returns true if the withdrawal succeeded, false if funds were insufficient.
+        /// Returns true if the withdrawal succeeded, false if it would breach the minimum balance.
         /// </summary>
         public bool Withdraw(decimal amount)
         {
-            if (amount <= 0)
+            string? error = ValidateTransactionAmount(amount);
+            if (error is not null)
             {
-                throw new ArgumentOutOfRangeException(nameof(amount), "Withdrawal amount must be greater than zero.");
+                throw new ArgumentOutOfRangeException(nameof(amount), error);
             }
 
-            if (amount > Balance)
+            if (Balance - amount < MinimumBalance)
             {
                 return false;
             }
@@ -76,6 +95,16 @@ namespace BankAccountLibrary
             Balance -= amount;
             _transactionHistory.Add($"Withdrew {amount:C}");
             return true;
+        }
+
+        /// <summary>
+        /// Pure validation helper extracted by DCR-1 so deposit/withdrawal amount rules can be
+        /// unit tested independently of any account instance or state mutation.
+        /// Returns null when the amount is valid, otherwise an error message.
+        /// </summary>
+        public static string? ValidateTransactionAmount(decimal amount)
+        {
+            return amount <= 0 ? "Transaction amount must be greater than zero." : null;
         }
 
         public int GetTransactionCount()
